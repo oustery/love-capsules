@@ -9,6 +9,13 @@ export interface SettingsMap {
 	[key: string]: string;
 }
 
+export interface Note {
+	id: string;
+	kind: 'note' | 'support';
+	body: string;
+	created_at: string;
+}
+
 export interface Reason {
 	id: string;
 	position: number;

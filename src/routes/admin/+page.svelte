@@ -2,14 +2,14 @@
 	import { fade, fly } from 'svelte/transition';
 	import { supabase } from '$lib/supabase';
 	import { auth } from '$lib/auth.svelte';
-	import type { Coupon, MoodLog } from '$lib/types';
+	import type { Coupon, MoodLog, Note, Photo, Reason, TimeCapsule } from '$lib/types';
 	import { CAPSULE_META, CAPSULE_SLUGS } from '$lib/config';
 	import { toast } from '$lib/toast.svelte';
 	import { buzz } from '$lib/haptics';
 	import { recorder, startRecording, stopRecording, discardRecording, mmss } from '$lib/recorder.svelte';
 	import { compressImage, kb } from '$lib/image';
-	import { uploadToMedia } from '$lib/storage';
-	import { shortTime } from '$lib/format';
+	import { uploadToMedia, deleteFromMedia, getSignedUrl } from '$lib/storage';
+	import { fullDate, shortTime } from '$lib/format';
 
 	let loaded = $state(false);
 	let busy = $state(false);
@@ -26,8 +26,42 @@
 
 	// — Статистика —
 	let missToday = $state(0);
+	let missTotal = $state(0);
 	let recentMoods = $state<MoodLog[]>([]);
 	let usedCoupons = $state<Coupon[]>([]);
+
+	// — Управление содержимым (полный список, не только добавление) —
+	let timeCapsules = $state<TimeCapsule[]>([]);
+	let allCoupons = $state<Coupon[]>([]);
+	let supportPhrases = $state<Note[]>([]);
+	let reasons = $state<Reason[]>([]);
+	let photos = $state<Photo[]>([]);
+	let photoUrls = $state<Record<string, string>>({});
+	let confirmKind = $state<string | null>(null);
+	let confirmId = $state<string | null>(null);
+
+	// — Смена пароля админки —
+	let pwOld = $state('');
+	let pwNew = $state('');
+	let pwRepeat = $state('');
+
+	function askDel(kind: string, id: string) {
+		buzz(10);
+		if (confirmKind === kind && confirmId === id) {
+			confirmKind = null;
+			confirmId = null;
+			return true;
+		}
+		confirmKind = kind;
+		confirmId = id;
+		setTimeout(() => {
+			if (confirmId === id) {
+				confirmKind = null;
+				confirmId = null;
+			}
+		}, 6000);
+		return false;
+	}
 
 	// — Диктофон —
 	let dest = $state<'capsule' | 'time'>('capsule');
@@ -94,15 +128,25 @@
 	}
 
 	async function loadAll() {
-		const [setRes, missRes, moodRes, coupRes] = await Promise.all([
-			supabase.from('settings').select('key, value'),
-			supabase
-				.from('miss_clicks')
-				.select('clicked_at', { count: 'exact', head: true })
-				.gte('clicked_at', startOfToday()),
-			supabase.from('mood_logs').select('*').order('created_at', { ascending: false }).limit(5),
-			supabase.from('coupons').select('*').eq('status', 'used').order('used_at', { ascending: false }).limit(8)
-		]);
+		const [setRes, missRes, missTotalRes, moodRes, coupRes, tcRes, notesRes, reasonsRes, photosRes] =
+			await Promise.all([
+				supabase.from('settings').select('key, value'),
+				supabase
+					.from('miss_clicks')
+					.select('clicked_at', { count: 'exact', head: true })
+					.gte('clicked_at', startOfToday()),
+				supabase.from('miss_clicks').select('clicked_at', { count: 'exact', head: true }),
+				supabase.from('mood_logs').select('*').order('created_at', { ascending: false }).limit(5),
+				supabase.from('coupons').select('*').order('created_at'),
+				supabase.from('time_capsules').select('*').order('unlock_at'),
+				supabase
+					.from('notes')
+					.select('*')
+					.eq('kind', 'support')
+					.order('created_at', { ascending: false }),
+				supabase.from('reasons').select('*').order('position'),
+				supabase.from('photos').select('*').order('created_at', { ascending: false }).limit(60)
+			]);
 
 		if (setRes.data) {
 			const map: Record<string, string> = {};
@@ -112,9 +156,22 @@
 			startDate = toDayInput(map['start_date']);
 		}
 		missToday = missRes.count ?? 0;
+		missTotal = missTotalRes.count ?? 0;
 		recentMoods = (moodRes.data ?? []) as MoodLog[];
-		usedCoupons = (coupRes.data ?? []) as Coupon[];
+		allCoupons = (coupRes.data ?? []) as Coupon[];
+		usedCoupons = allCoupons.filter((c) => c.status === 'used').slice(0, 8);
+		timeCapsules = (tcRes.data ?? []) as TimeCapsule[];
+		supportPhrases = (notesRes.data ?? []) as Note[];
+		reasons = (reasonsRes.data ?? []) as Reason[];
+		photos = (photosRes.data ?? []) as Photo[];
 		loaded = true;
+
+		// превью фото по подписанным ссылкам (лениво, параллельно)
+		for (const p of photos) {
+			getSignedUrl(p.storage_path).then((url) => {
+				if (url) photoUrls = { ...photoUrls, [p.id]: url };
+			});
+		}
 	}
 
 	function startOfToday(): string {
@@ -353,6 +410,129 @@
 			couponTitle = '';
 			couponSubtitle = '';
 			couponIcon = '🎟️';
+			const { data } = await supabase.from('coupons').select('*').order('created_at');
+			allCoupons = (data ?? []) as Coupon[];
+		} finally {
+			busy = false;
+		}
+	}
+
+	// — Капсулы времени: список и удаление —
+	async function delTimeCapsule(tc: TimeCapsule) {
+		if (!askDel('tc', tc.id)) return;
+		const { error } = await supabase.from('time_capsules').delete().eq('id', tc.id);
+		if (error) {
+			toast('Капсула не удалилась 🥺');
+			return;
+		}
+		if (tc.audio_path) await deleteFromMedia(tc.audio_path);
+		timeCapsules = timeCapsules.filter((x) => x.id !== tc.id);
+		buzz(12);
+		toast('Капсула удалена 🗑️');
+	}
+
+	// — Купоны: вернуть в строй / выбросить —
+	async function resetCoupon(c: Coupon) {
+		buzz(12);
+		const { error } = await supabase
+			.from('coupons')
+			.update({ status: 'active', used_at: null })
+			.eq('id', c.id);
+		if (error) {
+			toast('Не вернулся в строй 🥺');
+			return;
+		}
+		allCoupons = allCoupons.map((x) =>
+			x.id === c.id ? { ...x, status: 'active' as const, used_at: null } : x
+		);
+		toast('Купон снова в строю! ✨');
+	}
+
+	async function delCoupon(c: Coupon) {
+		if (!askDel('coupon', c.id)) return;
+		const { error } = await supabase.from('coupons').delete().eq('id', c.id);
+		if (error) {
+			toast('Купон не выбросился 🥺');
+			return;
+		}
+		allCoupons = allCoupons.filter((x) => x.id !== c.id);
+		buzz(12);
+		toast('Купон убран 🗑️');
+	}
+
+	// — Баночка и колода: удаление фраз и причин —
+	async function delPhrase(n: Note) {
+		if (!askDel('note', n.id)) return;
+		const { error } = await supabase.from('notes').delete().eq('id', n.id);
+		if (error) {
+			toast('Фраза не удалилась 🥺');
+			return;
+		}
+		supportPhrases = supportPhrases.filter((x) => x.id !== n.id);
+		buzz(12);
+	}
+
+	async function delReason(r: Reason) {
+		if (!askDel('reason', r.id)) return;
+		const { error } = await supabase.from('reasons').delete().eq('id', r.id);
+		if (error) {
+			toast('Причина не удалилась 🥺');
+			return;
+		}
+		reasons = reasons.filter((x) => x.id !== r.id);
+		buzz(12);
+	}
+
+	// — Фото: удалить из хранилища и из базы —
+	async function delPhoto(p: Photo) {
+		if (!askDel('photo', p.id)) return;
+		await deleteFromMedia(p.storage_path);
+		const { error } = await supabase.from('photos').delete().eq('id', p.id);
+		if (error) {
+			toast('Фото не удалилось 🥺');
+			return;
+		}
+		photos = photos.filter((x) => x.id !== p.id);
+		buzz(12);
+		toast('Фото удалено 🗑️');
+	}
+
+	// — Смена пароля админки (это не кодовое слово входа!) —
+	async function changePassword() {
+		const next = pwNew.trim();
+		if (next.length < 6) {
+			toast('Новый пароль — минимум 6 символов');
+			return;
+		}
+		if (next !== pwRepeat.trim()) {
+			toast('Пароли не совпадают 🙈');
+			return;
+		}
+		busy = true;
+		try {
+			const { data, error } = await supabase
+				.from('settings')
+				.select('value')
+				.eq('key', 'admin_password_hash')
+				.single();
+			const stored = ((data?.value as string | undefined) ?? '').trim().toLowerCase();
+			const given = await sha256Hex(pwOld.trim());
+			if (error || !stored || given !== stored) {
+				toast('Старый пароль не тот 🙈');
+				return;
+			}
+			const { error: upErr } = await supabase
+				.from('settings')
+				.upsert({ key: 'admin_password_hash', value: await sha256Hex(next) }, { onConflict: 'key' });
+			if (upErr) {
+				toast('Пароль не сохранился 🥺');
+				return;
+			}
+			pwOld = '';
+			pwNew = '';
+			pwRepeat = '';
+			buzz([12, 40, 12]);
+			toast('Пароль админки обновлён 🔐');
 		} finally {
 			busy = false;
 		}
@@ -429,18 +609,22 @@
 				{busy ? 'Сохраняю…' : 'Сохранить даты'}
 			</button>
 
-			<div class="mt-4 grid grid-cols-3 gap-2 text-center">
+			<div class="mt-4 grid grid-cols-2 gap-2 text-center">
 				<div class="rounded-2xl bg-shell py-3">
 					<div class="text-xl font-extrabold text-rose-deep">{missToday}</div>
 					<div class="text-[10px] font-bold text-ink/45">«скучаю» сегодня</div>
 				</div>
 				<div class="rounded-2xl bg-shell py-3">
-					<div class="text-xl font-extrabold text-rose-deep">{recentMoods.length}</div>
-					<div class="text-[10px] font-bold text-ink/45">чек-инов</div>
+					<div class="text-xl font-extrabold text-rose-deep">{missTotal}</div>
+					<div class="text-[10px] font-bold text-ink/45">«скучаю» всего</div>
 				</div>
 				<div class="rounded-2xl bg-shell py-3">
-					<div class="text-xl font-extrabold text-rose-deep">{usedCoupons.length}</div>
+					<div class="text-xl font-extrabold text-rose-deep">{allCoupons.filter((c) => c.status === 'used').length}</div>
 					<div class="text-[10px] font-bold text-ink/45">купонов погашено</div>
+				</div>
+				<div class="rounded-2xl bg-shell py-3">
+					<div class="text-xl font-extrabold text-rose-deep">{timeCapsules.length}</div>
+					<div class="text-[10px] font-bold text-ink/45">капсул времени</div>
 				</div>
 			</div>
 
@@ -581,6 +765,47 @@
 			</div>
 		</section>
 
+		<!-- 2а. Капсулы времени: что уже запланировано -->
+		<section class="card mt-4 p-5">
+			<h2 class="font-hand text-2xl font-semibold text-ink/85">капсулы времени</h2>
+			<p class="mt-0.5 text-xs text-ink/50">письма в будущее: видно, что и когда откроется</p>
+
+			{#if timeCapsules.length === 0}
+				<p class="mt-3 rounded-2xl bg-shell px-4 py-3 text-sm text-ink/50">
+					Пока нет ни одной — запиши в диктофоне выше («Капсула времени»).
+				</p>
+			{:else}
+				<div class="mt-3 space-y-2">
+					{#each timeCapsules as tc (tc.id)}
+						<div class="rounded-2xl bg-shell px-3.5 py-3" in:fly>
+							<div class="flex items-center gap-2.5">
+								<span class="text-xl">{new Date(tc.unlock_at).getTime() > Date.now() ? '⏳' : '📬'}</span>
+								<div class="min-w-0 flex-1">
+									<p class="truncate text-sm font-bold text-ink/80">{tc.title}</p>
+									<p class="text-[11px] font-semibold text-ink/45">
+										откроется {fullDate(new Date(tc.unlock_at))}
+										{#if tc.opened_at} · уже открыта{/if}
+									</p>
+								</div>
+								{#if tc.audio_path}<span title="есть голосовое">🎧</span>{/if}
+								{#if tc.body}<span title="есть текст">📜</span>{/if}
+								<button
+									type="button"
+									onclick={() => delTimeCapsule(tc)}
+									aria-label="Удалить капсулу"
+									class="shrink-0 rounded-xl bg-ivory px-2.5 py-1.5 text-xs font-extrabold transition active:scale-90 {confirmKind === 'tc' && confirmId === tc.id
+										? 'text-rose-deep ring-2 ring-rose'
+										: 'text-ink/40'}"
+								>
+									{confirmKind === 'tc' && confirmId === tc.id ? 'точно?' : '✕'}
+								</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</section>
+
 		<!-- 3. Фото -->
 		<section class="card mt-4 p-5">
 			<h2 class="font-hand text-2xl font-semibold text-ink/85">фотографии</h2>
@@ -636,6 +861,91 @@
 					{photoBusy ? 'Загружаю…' : `Загрузить (${drafts.length})`}
 				</button>
 			{/if}
+
+			{#if photos.length > 0}
+				<p class="mt-5 text-[11px] font-bold uppercase tracking-wide text-ink/40">
+					уже загруженные ({photos.length}) — ✕ удаляет фото навсегда
+				</p>
+				<div class="mt-2 grid grid-cols-3 gap-2">
+					{#each photos as p (p.id)}
+						<div class="relative" in:fly>
+							{#if photoUrls[p.id]}
+								<img
+									src={photoUrls[p.id]}
+									alt={p.caption ?? 'наше фото'}
+									loading="lazy"
+									class="aspect-square w-full rounded-2xl object-cover"
+								/>
+							{:else}
+								<div class="aspect-square w-full animate-pulse rounded-2xl bg-shell"></div>
+							{/if}
+							{#if p.caption}
+								<p class="mt-0.5 truncate text-center text-[10px] font-semibold text-ink/50">{p.caption}</p>
+							{/if}
+							<button
+								type="button"
+								onclick={() => delPhoto(p)}
+								aria-label="Удалить фото"
+								class="absolute -top-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white transition active:scale-90 {confirmKind === 'photo' && confirmId === p.id
+									? 'bg-rose-deep'
+									: 'bg-ink/80'}"
+							>
+								{confirmKind === 'photo' && confirmId === p.id ? '?!' : '✕'}
+							</button>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="mt-5 text-xs text-ink/45">Загруженных фото пока нет.</p>
+			{/if}
+		</section>
+
+		<!-- 3а. Купонник: полный список с управлением -->
+		<section class="card mt-4 p-5">
+			<h2 class="font-hand text-2xl font-semibold text-ink/85">купонник</h2>
+			<p class="mt-0.5 text-xs text-ink/50">↺ вернуть погашенный в строй, ✕ — выбросить совсем</p>
+
+			{#if allCoupons.length === 0}
+				<p class="mt-3 rounded-2xl bg-shell px-4 py-3 text-sm text-ink/50">
+					Купонов пока нет — напечатай ниже или прямо на странице купонника.
+				</p>
+			{:else}
+				<div class="mt-3 space-y-2">
+					{#each allCoupons as c (c.id)}
+						<div class="flex items-center gap-2.5 rounded-2xl bg-shell px-3.5 py-2.5" in:fly>
+							<span class="text-xl">{c.icon}</span>
+							<div class="min-w-0 flex-1">
+								<p class="truncate text-sm font-bold text-ink/80 {c.status === 'used' ? 'line-through opacity-60' : ''}">
+									{c.title}
+								</p>
+								{#if c.status === 'used' && c.used_at}
+									<p class="text-[11px] font-semibold text-ink/45">погашен {fullDate(new Date(c.used_at))}</p>
+								{/if}
+							</div>
+							{#if c.status === 'used'}
+								<button
+									type="button"
+									onclick={() => resetCoupon(c)}
+									aria-label="Вернуть купон в строй"
+									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage text-sm text-white transition active:scale-90"
+								>
+									↺
+								</button>
+							{/if}
+							<button
+								type="button"
+								onclick={() => delCoupon(c)}
+								aria-label="Удалить купон"
+								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-extrabold transition active:scale-90 {confirmKind === 'coupon' && confirmId === c.id
+									? 'bg-rose-deep text-white'
+									: 'bg-ivory text-ink/40'}"
+							>
+								{confirmKind === 'coupon' && confirmId === c.id ? '?!' : '✕'}
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</section>
 
 		<!-- 4. Контент -->
@@ -661,6 +971,31 @@
 				Добавить в баночку
 			</button>
 
+			{#if supportPhrases.length > 0}
+				<details class="mt-2 rounded-2xl bg-shell px-4 py-3">
+					<summary class="cursor-pointer text-xs font-extrabold text-ink/55">
+						в баночке сейчас: {supportPhrases.length} 🍪 — ✕ убирает фразу
+					</summary>
+					<div class="mt-2 max-h-44 space-y-1.5 overflow-y-auto pr-1">
+						{#each supportPhrases as n (n.id)}
+							<div class="flex items-center gap-2 rounded-xl bg-ivory px-3 py-2" in:fly>
+								<p class="min-w-0 flex-1 truncate text-xs text-ink/70">{n.body}</p>
+								<button
+									type="button"
+									onclick={() => delPhrase(n)}
+									aria-label="Удалить фразу"
+									class="shrink-0 text-xs font-extrabold transition active:scale-90 {confirmKind === 'note' && confirmId === n.id
+										? 'text-rose-deep'
+										: 'text-ink/30'}"
+								>
+									{confirmKind === 'note' && confirmId === n.id ? 'точно?' : '✕'}
+								</button>
+							</div>
+						{/each}
+					</div>
+				</details>
+			{/if}
+
 			<!-- причины -->
 			<label class="mt-5 block text-xs font-bold text-ink/55">
 				🃏 новые причины в колоду — по одной в строке (встанут в конец колоды)
@@ -679,6 +1014,32 @@
 			>
 				Добавить в колоду
 			</button>
+
+			{#if reasons.length > 0}
+				<details class="mt-2 rounded-2xl bg-shell px-4 py-3">
+					<summary class="cursor-pointer text-xs font-extrabold text-ink/55">
+						в колоде сейчас: {reasons.length} 🃏 — ✕ убирает причину
+					</summary>
+					<div class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+						{#each reasons as r (r.id)}
+							<div class="flex items-center gap-2 rounded-xl bg-ivory px-3 py-2" in:fly>
+								<span class="shrink-0 text-[10px] font-extrabold text-ink/35">{r.position}</span>
+								<p class="min-w-0 flex-1 truncate text-xs text-ink/70">{r.text}</p>
+								<button
+									type="button"
+									onclick={() => delReason(r)}
+									aria-label="Удалить причину"
+									class="shrink-0 text-xs font-extrabold transition active:scale-90 {confirmKind === 'reason' && confirmId === r.id
+										? 'text-rose-deep'
+										: 'text-ink/30'}"
+								>
+									{confirmKind === 'reason' && confirmId === r.id ? 'точно?' : '✕'}
+								</button>
+							</div>
+						{/each}
+					</div>
+				</details>
+			{/if}
 
 			<!-- купон -->
 			<p class="mt-5 text-xs font-bold text-ink/55">🎟️ новый купон</p>
@@ -709,6 +1070,48 @@
 				class="mt-2.5 w-full rounded-2xl bg-linear-to-r from-rose to-peach py-3 text-xs font-extrabold text-white shadow-lift transition active:scale-95 disabled:opacity-50"
 			>
 				Напечатать купон
+			</button>
+		</section>
+
+		<!-- 5. Безопасность -->
+		<section class="card mt-4 p-5">
+			<h2 class="font-hand text-2xl font-semibold text-ink/85">безопасность</h2>
+			<p class="mt-0.5 text-xs text-ink/50">пароль этой админки (кодовое слово входа меняется не здесь)</p>
+
+			<label class="mt-3 block text-xs font-bold text-ink/55">
+				старый пароль
+				<input
+					type="password"
+					bind:value={pwOld}
+					autocomplete="current-password"
+					class="mt-1 w-full rounded-2xl bg-shell px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-rose/40"
+				/>
+			</label>
+			<label class="mt-2.5 block text-xs font-bold text-ink/55">
+				новый пароль (минимум 6 символов)
+				<input
+					type="password"
+					bind:value={pwNew}
+					autocomplete="new-password"
+					class="mt-1 w-full rounded-2xl bg-shell px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-rose/40"
+				/>
+			</label>
+			<label class="mt-2.5 block text-xs font-bold text-ink/55">
+				повтори новый
+				<input
+					type="password"
+					bind:value={pwRepeat}
+					autocomplete="new-password"
+					class="mt-1 w-full rounded-2xl bg-shell px-4 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-rose/40"
+				/>
+			</label>
+			<button
+				type="button"
+				onclick={changePassword}
+				disabled={busy || !pwOld.trim() || !pwNew.trim()}
+				class="mt-3 w-full rounded-2xl bg-linear-to-r from-rose to-peach py-3.5 text-sm font-extrabold text-white shadow-lift transition active:scale-95 disabled:opacity-60"
+			>
+				{busy ? 'Сохраняю…' : 'Сменить пароль 🔐'}
 			</button>
 		</section>
 

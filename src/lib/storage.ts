@@ -24,3 +24,9 @@ export async function uploadToMedia(path: string, blob: Blob, contentType?: stri
 		.upload(path, blob, { contentType, upsert: true });
 	return !error;
 }
+
+/** Удаляет файл из бакета media (например, вместе с удалением фото/капсулы). */
+export async function deleteFromMedia(path: string): Promise<boolean> {
+	const { error } = await supabase.storage.from('media').remove([path]);
+	return !error;
+}
