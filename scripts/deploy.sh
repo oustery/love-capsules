@@ -10,6 +10,9 @@
 
 set -euo pipefail
 
+# Работаем из корня проекта, откуда бы ни запускали скрипт
+cd "$(dirname "$0")/.."
+
 : "${CLOUDFLARE_API_TOKEN:?Задай CLOUDFLARE_API_TOKEN=<токен Cloudflare с правом Pages:Edit>}"
 
 if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
