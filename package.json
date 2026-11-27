@@ -1,0 +1,30 @@
+{
+	"name": "love-capsules",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Уютное приватное PWA на двоих: таймеры, капсулы, причины и купоны",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-cloudflare": "^5.0.0",
+		"@sveltejs/kit": "^2.22.0",
+		"@sveltejs/vite-plugin-svelte": "^6.0.0",
+		"@tailwindcss/vite": "^4.1.0",
+		"@vite-pwa/sveltekit": "^1.0.0",
+		"svelte": "^5.36.0",
+		"svelte-check": "^4.2.0",
+		"tailwindcss": "^4.1.0",
+		"typescript": "^5.8.0",
+		"vite": "^7.0.0"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.50.0"
+	}
+}
