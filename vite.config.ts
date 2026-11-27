@@ -3,6 +3,10 @@ import tailwindcss from '@tailwindcss/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
+// BASE_PATH=/love-capsules — сборка для GitHub Pages (приложение живёт в подпапке).
+// Для Cloudflare Pages базовый путь пустой.
+const base = process.env.BASE_PATH || '';
+
 export default defineConfig({
 	plugins: [
 		tailwindcss(),
@@ -14,23 +18,24 @@ export default defineConfig({
 				short_name: 'Капсулы',
 				description: 'Тёплое место на двоих: таймеры, капсулы, причины и купоны',
 				lang: 'ru',
-				id: '/',
-				start_url: '/',
-				scope: '/',
+				id: `${base}/`,
+				start_url: `${base}/`,
+				scope: `${base}/`,
 				display: 'standalone',
 				orientation: 'portrait',
 				background_color: '#FDF8F5',
 				theme_color: '#FDF8F5',
 				categories: ['lifestyle'],
 				icons: [
-					{ src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
-					{ src: '/icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
-					{ src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+					{ src: `${base}/icons/pwa-192.png`, sizes: '192x192', type: 'image/png' },
+					{ src: `${base}/icons/pwa-512.png`, sizes: '512x512', type: 'image/png' },
+					{ src: `${base}/icons/maskable-512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
 				]
 			},
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-				navigateFallback: '/',
+				// SPA-оболочка: на GitHub Pages это фолбэк 404.html, на Cloudflare — корень
+				navigateFallback: process.env.ADAPTER === 'static' ? `${base}/404.html` : `${base}/`,
 				runtimeCaching: [
 					{
 						urlPattern: /^https:\/\/[^/]+\/storage\/v1\/object\//,

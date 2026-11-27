@@ -1,6 +1,13 @@
 # Наши капсулы 💗
 
-**Живое приложение:** https://love-capsules.pages.dev (вход по кодовому слову — «любовь»)
+**Два адреса приложения** (вход по кодовому слову — «любовь»):
+
+- https://love-capsules.pages.dev — Cloudflare Pages. Из России часто не открывается
+  (`ERR_CERT_AUTHORITY_INVALID`): домен `pages.dev` блокируется операторами на уровне TLS —
+  сам сайт жив, обойти можно только VPN.
+- https://oustery.github.io/love-capsules/ — GitHub Pages, открывается из России.
+  Включается один раз: **Settings → Pages → Source: Deploy from a branch → `gh-pages` / `(root)`**.
+  Обновление: `bash scripts/deploy-gh.sh`.
 
 Уютное приватное PWA на двоих: таймеры до возвращения, дневник настроения,
 баночка поддержки, капсулы «Открой, когда...», колода «100 причин», купонник и галерея.
