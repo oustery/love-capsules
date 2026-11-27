@@ -76,7 +76,7 @@
 </script>
 
 <svelte:head>
-	<title>Главная · Наши капсулы</title>
+	<title>Главная · Для тебя 💗</title>
 </svelte:head>
 
 <PetalRain bursts={bursts} />

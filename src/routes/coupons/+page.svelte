@@ -121,7 +121,7 @@
 </script>
 
 <svelte:head>
-	<title>Купонник · Наши капсулы</title>
+	<title>Купонник · Для тебя 💗</title>
 </svelte:head>
 
 <div class="mx-auto w-full max-w-md px-4 pb-32 pt-5">

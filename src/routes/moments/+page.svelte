@@ -45,7 +45,7 @@
 </script>
 
 <svelte:head>
-	<title>Наши моменты · Наши капсулы</title>
+	<title>Наши моменты · Для тебя 💗</title>
 </svelte:head>
 
 <div class="mx-auto w-full max-w-md px-4 pb-32 pt-5">

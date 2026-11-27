@@ -84,7 +84,7 @@
 </script>
 
 <svelte:head>
-	<title>100 причин · Наши капсулы</title>
+	<title>100 причин · Для тебя 💗</title>
 </svelte:head>
 
 <div class="mx-auto w-full max-w-md px-4 pb-32 pt-5">

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { plural, fullDate } from '$lib/format';
+	import { plural, fullDateFixed } from '$lib/format';
 
 	let { start, now }: { start: Date | null; now: number } = $props();
 
@@ -8,7 +8,7 @@
 
 	const days = $derived(start ? Math.max(0, Math.floor((now - start.getTime()) / DAY)) : 0);
 	const totalHours = $derived(start ? Math.max(0, Math.floor((now - start.getTime()) / HOUR)) : 0);
-	const startLabel = $derived(start ? fullDate(start) : '');
+	const startLabel = $derived(start ? fullDateFixed(start) : '');
 </script>
 
 <div class="card p-5">

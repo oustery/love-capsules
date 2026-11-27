@@ -14,6 +14,11 @@
 	let loaded = $state(false);
 	let busy = $state(false);
 
+	// — Замок админки: пароль проверяется по SHA-256 из settings (admin_password_hash) —
+	let unlocked = $state(typeof sessionStorage !== 'undefined' && sessionStorage.getItem('capsules_admin') === '1');
+	let gateWord = $state('');
+	let gateBusy = $state(false);
+
 	// — Даты —
 	let targetDate = $state('');
 	let targetFrom = $state('');
@@ -53,8 +58,40 @@
 	let couponIcon = $state('🎟️');
 
 	$effect(() => {
-		if (!loaded && auth.session) loadAll();
+		if (!loaded && auth.session && unlocked) loadAll();
 	});
+
+	async function sha256Hex(text: string): Promise<string> {
+		const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+		return Array.from(new Uint8Array(digest))
+			.map((b) => b.toString(16).padStart(2, '0'))
+			.join('');
+	}
+
+	async function tryUnlock() {
+		if (gateBusy) return;
+		gateBusy = true;
+		try {
+			const { data, error } = await supabase
+				.from('settings')
+				.select('value')
+				.eq('key', 'admin_password_hash')
+				.single();
+			const stored = ((data?.value as string | undefined) ?? '').trim().toLowerCase();
+			const given = await sha256Hex(gateWord.trim());
+			if (error || !stored || given !== stored) {
+				toast('Не тот пароль 🙈');
+				return;
+			}
+			sessionStorage.setItem('capsules_admin', '1');
+			unlocked = true;
+			gateWord = '';
+			buzz([12, 40, 12]);
+			toast('Админка открыта 💛');
+		} finally {
+			gateBusy = false;
+		}
+	}
 
 	async function loadAll() {
 		const [setRes, missRes, moodRes, coupRes] = await Promise.all([
@@ -86,20 +123,34 @@
 		return d.toISOString();
 	}
 
+	// Значения дат в форме показываем в тайзоне проекта (+03) — чтобы календарные даты не «уезжали» на день
+	function mskParts(d: Date): string {
+		return new Intl.DateTimeFormat('en-CA', {
+			timeZone: 'Europe/Moscow',
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23'
+		})
+			.format(d)
+			.replace(',', '');
+	}
+
 	function toLocalInput(iso: string | undefined): string {
 		if (!iso) return '';
 		const d = new Date(iso);
 		if (Number.isNaN(d.getTime())) return '';
-		const p = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+		const [date, time] = mskParts(d).split(' ');
+		return `${date}T${time}`;
 	}
 
 	function toDayInput(iso: string | undefined): string {
 		if (!iso) return '';
 		const d = new Date(iso);
 		if (Number.isNaN(d.getTime())) return '';
-		const p = (n: number) => String(n).padStart(2, '0');
-		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+		return mskParts(d).split(' ')[0];
 	}
 
 	// — Сохранение дат —
@@ -309,10 +360,40 @@
 </script>
 
 <svelte:head>
-	<title>Админка · Наши капсулы</title>
+	<title>Админка · Для тебя 💗</title>
 </svelte:head>
 
-{#if !loaded}
+{#if !unlocked}
+	<!-- Замок: админка открывается только по паролю -->
+	<div class="flex min-h-dvh items-center justify-center px-6">
+		<form
+			onsubmit={(e) => {
+				e.preventDefault();
+				tryUnlock();
+			}}
+			class="card w-full max-w-sm p-6 text-center"
+		>
+			<div class="text-5xl">🔐</div>
+			<h1 class="mt-3 font-hand text-3xl font-semibold text-ink/85">админка под замком</h1>
+			<p class="mt-1 text-sm text-ink/55">введи наш тайный пароль</p>
+			<input
+				type="password"
+				bind:value={gateWord}
+				autocomplete="current-password"
+				placeholder="пароль"
+				class="mt-4 w-full rounded-2xl bg-shell px-4 py-3 text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-rose/40"
+			/>
+			<button
+				type="submit"
+				disabled={gateBusy || !gateWord.trim()}
+				class="mt-3 w-full rounded-2xl bg-linear-to-r from-rose to-peach py-3.5 text-sm font-extrabold text-white shadow-lift transition active:scale-95 disabled:opacity-60"
+			>
+				{gateBusy ? 'Проверяю…' : 'Открыть 🔓'}
+			</button>
+			<p class="mt-3 text-xs text-ink/40">пароль знает только он 💛</p>
+		</form>
+	</div>
+{:else if !loaded}
 	<div class="flex min-h-dvh items-center justify-center">
 		<span class="animate-heartbeat text-5xl">🤍</span>
 	</div>

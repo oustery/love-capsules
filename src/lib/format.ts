@@ -19,6 +19,15 @@ const prettyFmt = new Intl.DateTimeFormat('ru-RU', {
 
 const dayFmt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 
+/** Календарные даты проекта (даты в settings хранятся в +03:00) не должны «уезжать» на день
+ *  на устройствах в другой тайзоне — поэтому форматируем в фиксированной тайзоне. */
+const dayFmtFixed = new Intl.DateTimeFormat('ru-RU', {
+	day: 'numeric',
+	month: 'long',
+	year: 'numeric',
+	timeZone: 'Europe/Moscow'
+});
+
 const timeFmt = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
 export function prettyDate(d: Date): string {
@@ -27,6 +36,10 @@ export function prettyDate(d: Date): string {
 
 export function fullDate(d: Date): string {
 	return dayFmt.format(d);
+}
+
+export function fullDateFixed(d: Date): string {
+	return dayFmtFixed.format(d);
 }
 
 export function shortTime(d: Date): string {

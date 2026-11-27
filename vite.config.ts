@@ -14,8 +14,8 @@ export default defineConfig({
 			registerType: 'autoUpdate',
 			includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
 			manifest: {
-				name: 'Наши капсулы',
-				short_name: 'Капсулы',
+				name: 'Для тебя 💗',
+				short_name: 'Для тебя 💗',
 				description: 'Тёплое место на двоих: таймеры, капсулы, причины и купоны',
 				lang: 'ru',
 				id: `${base}/`,
