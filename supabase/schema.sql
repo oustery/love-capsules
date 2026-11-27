@@ -99,12 +99,16 @@ create table if not exists public.photos (
 );
 
 -- ------------------------------------------------------------
--- 2. RLS: данные видит и меняет только авторизованный пользователь
---    (у пары один общий аккаунт, поэтому «authenticated» = «мы»)
+-- 2. RLS: данные видит и меняет ТОЛЬКО аккаунт пары.
+--    ⚠️ Замени UUID на id своего общего аккаунта (see security-fix.sql):
+--    Dashboard → Authentication → Users → скопируй id пользователя.
+--    Просто «authenticated» нельзя: регистрация может быть открыта,
+--    и тогда чужой аккаунт получил бы доступ ко всем данным.
 -- ------------------------------------------------------------
 
 do $$
 declare
+	pair uuid := '8d8eec8a-0b88-4983-a62a-36e8b522ddc8';  -- ⚠️ UUID аккаунта love@capsule.app
 	t text;
 begin
 	foreach t in array array[
@@ -114,8 +118,8 @@ begin
 		execute format('alter table public.%I enable row level security', t);
 		execute format('drop policy if exists "pair_access" on public.%I', t);
 		execute format(
-			'create policy "pair_access" on public.%I for all to authenticated using (true) with check (true)',
-			t
+			'create policy "pair_access" on public.%I for all to authenticated using (auth.uid() = %L) with check (auth.uid() = %L)',
+			t, pair, pair
 		);
 	end loop;
 end $$;
@@ -146,20 +150,24 @@ drop policy if exists "media delete" on storage.objects;
 create policy "media read"
 	on storage.objects for select
 	to authenticated
-	using (bucket_id = 'media');
+	using (bucket_id = 'media' and auth.uid() = '8d8eec8a-0b88-4983-a62a-36e8b522ddc8');  -- ⚠️ тот же UUID
 
 create policy "media insert"
 	on storage.objects for insert
 	to authenticated
-	with check (bucket_id = 'media');
+	with check (bucket_id = 'media' and auth.uid() = '8d8eec8a-0b88-4983-a62a-36e8b522ddc8');
 
 create policy "media update"
 	on storage.objects for update
 	to authenticated
-	using (bucket_id = 'media')
-	with check (bucket_id = 'media');
+	using (bucket_id = 'media' and auth.uid() = '8d8eec8a-0b88-4983-a62a-36e8b522ddc8')
+	with check (bucket_id = 'media' and auth.uid() = '8d8eec8a-0b88-4983-a62a-36e8b522ddc8');
 
 create policy "media delete"
 	on storage.objects for delete
 	to authenticated
-	using (bucket_id = 'media');
+	using (bucket_id = 'media' and auth.uid() = '8d8eec8a-0b88-4983-a62a-36e8b522ddc8');
+
+-- anon до входа ни к каким данным не должен иметь грантов вовсе
+revoke all on all tables in schema public from anon;
+revoke all on all sequences in schema public from anon;
