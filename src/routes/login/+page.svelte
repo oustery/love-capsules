@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { fade, fly, scale } from 'svelte/transition';
 	import { backOut } from 'svelte/easing';
 	import HeartLock from '$lib/components/HeartLock.svelte';
@@ -24,7 +25,7 @@
 			buzz([18, 60, 26]);
 			unlocked = true;
 			bursts += 1;
-			setTimeout(() => goto('/', { replaceState: true }), 1100);
+			setTimeout(() => goto(`${base}/`, { replaceState: true }), 1100);
 		} else {
 			buzz([40, 60, 40]);
 			shakeKey += 1;

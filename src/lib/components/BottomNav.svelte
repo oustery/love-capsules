@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { base } from '$app/paths';
 
 	interface NavItem {
 		route: string;
@@ -17,12 +18,12 @@
 	];
 
 	function isActive(item: NavItem): boolean {
-		return page.url.pathname === item.route;
+		return path() === item.route;
 	}
 
-	/** путь без хвостового слэша — чтобы типы Kit не спорили с литералами */
+	/** путь без base-префикса и хвостового слэша — чтобы сравнения работали и на Cloudflare, и на GitHub Pages */
 	function path(): string {
-		return page.url.pathname.replace(/\/+$/, '') || '/';
+		return page.url.pathname.slice(base.length).replace(/\/+$/, '') || '/';
 	}
 
 	const onLogin = $derived(path() === '/login');
@@ -41,7 +42,7 @@
 					type="button"
 					aria-label={item.label}
 					aria-current={isActive(item) ? 'page' : undefined}
-					onclick={() => goto(item.route)}
+					onclick={() => goto(`${base}${item.route}`)}
 					class="flex flex-1 flex-col items-center gap-0.5 rounded-2xl px-1 py-1.5 transition active:scale-95 {isActive(
 						item
 					)

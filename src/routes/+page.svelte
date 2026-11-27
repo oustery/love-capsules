@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
+	import { base } from '$app/paths';
 	import { supabase } from '$lib/supabase';
 	import { auth } from '$lib/auth.svelte';
 	import type { SettingsMap } from '$lib/types';
@@ -134,7 +135,7 @@
 
 		<footer class="mt-8 pb-2 text-center">
 			<a
-				href="/admin"
+				href={`${base}/admin`}
 				aria-label="Админка"
 				class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-ivory text-lg text-ink/40 shadow-soft transition active:scale-90"
 			>
