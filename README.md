@@ -31,12 +31,29 @@ node supabase/create-auth-user.mjs
 ## 2. Локальный запуск
 
 ```bash
-cp .env.example .env   # вставь Project URL и anon key из Supabase → Settings → API
+cp .env.example .env   # останется вписать только Project URL из Supabase → Settings → API
 npm install
 npm run dev
 ```
 
+Про ключи Supabase (новый формат):
+
+- `sb_publishable_...` — открытый ключ для клиента, вставляется в `PUBLIC_SUPABASE_ANON_KEY`
+  (он попадает в бандл — так и задумано; в `.env.example` он уже вписан);
+- `sb_secret_...` — серверный ключ, приложению не нужен. Понадобится только один раз:
+  при создании пользователя скриптом `scripts/create_user.mjs` (значение для `SUPABASE_SERVICE_ROLE_KEY`).
+  Нигде не коммить и не публиковать.
+- Не хватает только адреса проекта — `PUBLIC_SUPABASE_URL=https://xxxx.supabase.co`.
+
 ## 3. Деплой на Cloudflare Pages
+
+Вариант А — одной командой, если есть API-токен с правом **Cloudflare Pages: Edit**:
+
+```bash
+CLOUDFLARE_API_TOKEN=<токен> bash scripts/deploy.sh
+```
+
+Вариант Б — через дашборд:
 
 1. Запушь репозиторий на GitHub и подключи в **Cloudflare Pages**.
 2. Настройки сборки:
