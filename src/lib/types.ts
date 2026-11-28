@@ -11,7 +11,7 @@ export interface SettingsMap {
 
 export interface Note {
 	id: string;
-	kind: 'note' | 'support';
+	kind: 'note' | 'support' | 'goodnight' | 'poem';
 	body: string;
 	created_at: string;
 }

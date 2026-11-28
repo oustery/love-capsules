@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { scale } from 'svelte/transition';
-	import { jar, ensureJarLoaded, pullPhrase } from '$lib/jar.svelte';
+	import { jar, ensureJarLoaded, pullPhrase, pullNight } from '$lib/jar.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { buzz } from '$lib/haptics';
 
@@ -22,6 +22,12 @@
 	function shake() {
 		buzz([12, 40, 10]);
 		if (!pullPhrase()) toast('Баночка пустовата — добавь фраз в notes (kind=«support»)');
+	}
+
+	// ночное «спокойной ночи» из тех же ночных СМС
+	function night() {
+		buzz([10, 40, 12]);
+		if (!pullNight()) toast('Ночных сообщений пока нет — добавьте их в notes (kind=«goodnight»)');
 	}
 </script>
 
@@ -47,6 +53,16 @@
 			<span class="animate-float absolute right-7 bottom-12 text-xl opacity-60" style="animation-delay: -3s">🩷</span>
 		</div>
 	</button>
+
+	<div class="mt-3 flex justify-center">
+		<button
+			type="button"
+			onclick={night}
+			class="rounded-2xl bg-shell px-4 py-2.5 text-xs font-extrabold text-ink/60 transition active:scale-95"
+		>
+			🌙 Спокойной ночи
+		</button>
+	</div>
 
 	{#if jar.current}
 		{#key jar.current}

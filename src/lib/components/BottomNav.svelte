@@ -12,6 +12,7 @@
 	const items: NavItem[] = [
 		{ route: '/', label: 'Главная', icon: '🏠' },
 		{ route: '/capsules', label: 'Капсулы', icon: '💌' },
+		{ route: '/poems', label: 'Стихи', icon: '🪶' },
 		{ route: '/reasons', label: 'Причины', icon: '🃏' },
 		{ route: '/coupons', label: 'Купоны', icon: '🎟️' },
 		{ route: '/moments', label: 'Моменты', icon: '📷' }
