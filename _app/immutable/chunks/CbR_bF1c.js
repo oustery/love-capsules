@@ -1,1 +1,0 @@
-import{c as _}from"./Dm2uCAVl.js";import{F as t,z as a,G as l,H as o,I as p,J as c}from"./DA37CoMZ.js";function g(s,e,n,i){var f=s[t];if(a||f!==e||l){var r=_(e);(!a||r!==o(s,"style"))&&(r==null?p(s,"style"):c(s,r)),s[t]=e}return i}export{g as s};
